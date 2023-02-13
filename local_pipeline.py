@@ -10,8 +10,8 @@ PIPELINE_NAME = "diabetes-pipeline"
  
 # pipeline inputs
 DATA_ROOT = "data"
-TRANSFORM_MODULE_FILE = "customer_churn_transform.py"
-TRAINER_MODULE_FILE = "customer_churn_trainer.py"
+TRANSFORM_MODULE_FILE = "diabetes_data_transform.py"
+TRAINER_MODULE_FILE = "diabetes_data_trainer.py"
 # requirement_file = os.path.join(root, "requirements.txt")
 
 # pipeline outputs
@@ -46,7 +46,7 @@ def init_local_pipeline(
 if __name__ == "__main__":
     logging.set_verbosity(logging.INFO)
     
-    from modules.components import init_components
+    from component import init_components
     
     components = init_components(
         DATA_ROOT,
