@@ -23,8 +23,8 @@ from tfx.proto import trainer_pb2
 # Code di bawah akan membuat variable konstan untuk pipeline
 
 # %%
-PIPELINE_NAME = "wine-pipeline"
-SCHEMA_PIPELINE_NAME = "wine_tfdv-schema"
+PIPELINE_NAME = "diabetes-pipeline"
+SCHEMA_PIPELINE_NAME = "diabetes-tfdv-schema"
 
 PIPELINE_ROOT = os.path.join('komarr007-pipeline', PIPELINE_NAME)
 
@@ -101,7 +101,7 @@ ctx.show(example_validator.outputs['anomalies'])
 # code di bawah akan membuat contant module yang akan di gunakan untuk transformasi data
 
 # %%
-CONSTANT_MODULE_FILE = "wine_data_constant.py"
+CONSTANT_MODULE_FILE = "diabetes_data_constant.py"
 
 # %%
 %%writefile {CONSTANT_MODULE_FILE}
@@ -110,8 +110,8 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_transform as tft
 
-LABEL_KEY = "quality"
-FEATURE_KEY = ["fixed acidity","volatile acidity","citric acid","residual sugar","chlorides","free sulfur dioxide","total sulfur dioxide","density","pH","sulphates","alcohol"]
+LABEL_KEY = "Outcome"
+FEATURE_KEY = ['Pregnancies','Glucose','BloodPressure','SkinThickness','Insulin','BMI','DiabetesPedigreeFunction','Age']
 
 
 def transformed_name(key):
@@ -126,18 +126,18 @@ def transformed_name(key):
 # Code di bawah membuat transformasi module
 
 # %%
-TRANSFORM_MODULE_FILE = "wine_data_transform.py"
+TRANSFORM_MODULE_FILE = "diabetes_data_transform.py"
 
 # %%
 %%writefile {TRANSFORM_MODULE_FILE}
 
 import tensorflow as tf
 import tensorflow_transform as tft
-import wine_data_constant
+import diabetes_data_constant
 
-_FEATURE_KEY = wine_data_constant.FEATURE_KEY
-_LABEL_KEY = wine_data_constant.LABEL_KEY
-_transformed_name = wine_data_constant.transformed_name
+_FEATURE_KEY = diabetes_data_constant.FEATURE_KEY
+_LABEL_KEY = diabetes_data_constant.LABEL_KEY
+_transformed_name = diabetes_data_constant.transformed_name
 
 def preprocessing_fn(inputs):
   """Melakukan proses scaling z score pada feature"""
@@ -172,7 +172,7 @@ ctx.run(transform)
 # Code di bawah membuat training module yang berisikan model ML
 
 # %%
-TRAINER_MODULE_FILE = "wine_data_trainer.py"
+TRAINER_MODULE_FILE = "diabetes_data_trainer.py"
 
 # %%
 %%writefile {TRAINER_MODULE_FILE}
@@ -184,11 +184,11 @@ from tensorflow.keras import layers
 import os  
 import tensorflow_hub as hub
 from tfx.components.trainer.fn_args_utils import FnArgs
-import wine_data_constant
+import diabetes_data_constant
 
-_LABEL_KEY = wine_data_constant.LABEL_KEY
-_FEATURE_KEY = wine_data_constant.FEATURE_KEY
-_transformed_name = wine_data_constant.transformed_name
+_LABEL_KEY = diabetes_data_constant.LABEL_KEY
+_FEATURE_KEY = diabetes_data_constant.FEATURE_KEY
+_transformed_name = diabetes_data_constant.transformed_name
 
     
 def get_model(show_summary: bool = True) -> tf.keras.models.Model:
@@ -350,7 +350,7 @@ ctx.run(model_resolver)
 import tensorflow_model_analysis as tfma 
  
 eval_config = tfma.EvalConfig(
-    model_specs=[tfma.ModelSpec(label_key='quality')],
+    model_specs=[tfma.ModelSpec(label_key='Outcome')],
     slicing_specs=[tfma.SlicingSpec()],
     metrics_specs=[
         tfma.MetricsSpec(metrics=[
@@ -407,10 +407,36 @@ model=trainer.outputs['model'],
 model_blessing=evaluator.outputs['blessing'],
 push_destination=pusher_pb2.PushDestination(
     filesystem=pusher_pb2.PushDestination.Filesystem(
-        base_directory='serving_model_dir/wine-detection-model'))
- 
+        base_directory='serving_model_dir/diabetes-detection-model'))
 )
  
 ctx.run(pusher)
+
+# %% [markdown]
+# Code di bawah melakukan pembacaan terhadap data yang telah di transform yang akan digunakan untuk testing prediksi
+
+# %%
+# Get the URI of the output artifact representing the transformed examples, which is a directory
+train_uri = os.path.join(transform.outputs['transformed_examples'].get()[0].uri, 'Split-train')
+
+# Get the list of files in this directory (all compressed TFRecord files)
+tfrecord_filenames = [os.path.join(train_uri, name)
+                      for name in os.listdir(train_uri)]
+
+# Create a `TFRecordDataset` to read these files
+dataset = tf.data.TFRecordDataset(tfrecord_filenames, compression_type="GZIP")
+
+for tfrecord in dataset.take(1):
+  serialized_example = tfrecord.numpy()
+  example = tf.train.Example()
+  example.ParseFromString(serialized_example)
+  print(example)
+
+# %%
+import requests
+from pprint import PrettyPrinter
+ 
+pp = PrettyPrinter()
+pp.pprint(requests.get("https://mlpipeline-production.up.railway.app/v1/models/cc-model").json())
 
 
